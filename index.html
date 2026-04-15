@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Shiftwise AU is an award-guided pay, tax, and budget planner for Australian workers with shift tracking, subscriptions, savings goals, and offline-ready tools.">
+  <meta name="theme-color" content="#fbfbf7">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Shiftwise AU">
+  <title>Shiftwise AU</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <div class="ambient ambient-three"></div>
+
+  <div class="login-shell hidden" id="loginShell">
+    <section class="login-card">
+      <div class="login-copy-pane">
+        <p class="eyebrow">Local login</p>
+        <h2 class="login-title">Unlock your Shiftwise account</h2>
+        <p class="field-help">
+          Enter your username or PIN to open the data saved for you on this browser.
+        </p>
+        <div class="status-banner login-status hidden" id="loginStatus"></div>
+
+        <form class="login-form" id="loginForm">
+          <label class="field field-span">
+            <span>Username or PIN</span>
+            <input autocomplete="username" name="credential" placeholder="sam or 4821" type="text">
+          </label>
+
+          <div class="compact-form-actions field-span">
+            <button class="button primary-button" type="submit">Unlock app</button>
+          </div>
+        </form>
+
+        <div class="login-account-list" id="loginAccountList"></div>
+      </div>
+
+      <div class="login-side">
+        <p class="section-kicker">Create local account</p>
+        <h3 class="login-side-title">Add another person to this browser</h3>
+
+        <form class="compact-form" id="loginCreateForm">
+          <label class="field">
+            <span>Display name</span>
+            <input name="displayName" placeholder="Sam" required type="text">
+          </label>
+
+          <label class="field">
+            <span>Username</span>
+            <input autocapitalize="off" name="username" placeholder="sam" required type="text">
+          </label>
+
+          <label class="field field-span">
+            <span>PIN</span>
+            <input inputmode="numeric" name="pin" placeholder="Optional 4-6 digits" type="password">
+          </label>
+
+          <div class="compact-form-actions field-span">
+            <button class="button secondary-button" type="submit">Create account</button>
+          </div>
+        </form>
+
+        <div class="compact-form-actions login-side-actions">
+          <button class="button ghost-button" id="loginImportDataButton" type="button">Import backup</button>
+          <button class="button secondary-button" id="loginInstallAppButton" type="button">Install app</button>
+        </div>
+
+        <p class="field-help">
+          Install Shiftwise on Android or iPhone for offline use, then use backup export and import to move local data between devices.
+        </p>
+      </div>
+    </section>
+  </div>
+
+  <header class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">Award-guided pay and budget planner</p>
+      <h1>Shiftwise AU</h1>
+      <p class="hero-text">
+        Record the exact hourly rates from Fair Work before you enter shifts, then track gross pay,
+        estimated tax, expenses, subscriptions, savings, and debts in one local-first dashboard.
+      </p>
+
+      <section class="profile-panel account-panel">
+        <div class="profile-copy">
+          <p class="section-kicker">Account</p>
+          <h2 class="profile-title">Signed in on this browser</h2>
+          <p class="field-help">
+            Each local account keeps its own award setup, holidays, shifts, expenses, subscriptions,
+            savings goals, and debts. Use switch account to return to the login page.
+          </p>
+        </div>
+
+        <div class="profile-controls account-controls">
+          <div class="account-summary" id="activeAccountSummary"></div>
+
+          <div class="profile-delete-row account-actions">
+            <button class="button secondary-button" id="lockAppButton" type="button">Switch account</button>
+            <button class="button ghost-button" id="deleteProfileButton" type="button">Delete current account</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="hero-actions">
+        <a class="button primary-button" href="https://calculate.fairwork.gov.au/FindYourAward" rel="noreferrer" target="_blank">Open Fair Work Award Finder</a>
+        <a class="button ghost-button" href="https://www.ato.gov.au/tax-rates-and-codes/tax-rates-australian-residents" rel="noreferrer" target="_blank">Check ATO tax rates</a>
+        <button class="button ghost-button" id="exportDataButton" type="button">Download backup</button>
+        <button class="button ghost-button" id="importDataButton" type="button">Import backup</button>
+        <button class="button secondary-button" id="installAppButton" type="button">Install app</button>
+        <button aria-pressed="false" class="button ghost-button theme-toggle-button" id="themeToggleButton" type="button">Dark mode</button>
+      </div>
+      <p class="hero-helper">
+        Publish this over HTTPS and users can install it like an app on Android and iPhone, keep it available offline,
+        and move their local data between devices with backup import and export.
+      </p>
+    </div>
+
+    <div class="hero-metrics" id="heroMetrics"></div>
+  </header>
+
+  <main class="shell">
+    <input accept=".json,application/json" class="hidden" id="importDataInput" type="file">
+    <div class="status-banner hidden" id="appStatus"></div>
+
+    <nav aria-label="Finance sections" class="tab-bar">
+      <button class="tab-button is-active" data-tab="dashboard" type="button">Dashboard</button>
+      <button class="tab-button" data-tab="salary" type="button">Salary</button>
+      <button class="tab-button" data-tab="expenses" type="button">Expenses</button>
+      <button class="tab-button" data-tab="subscriptions" type="button">Subscriptions</button>
+      <button class="tab-button" data-tab="savings" type="button">Savings</button>
+      <button class="tab-button" data-tab="debts" type="button">Debts</button>
+    </nav>
+
+    <section class="panel is-active" data-panel="dashboard">
+      <div class="panel-grid">
+        <article class="card intro-card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Home dashboard</p>
+              <h2>Your shifts and money in one view</h2>
+            </div>
+            <div class="badge-row" id="dashboardBadges"></div>
+          </div>
+          <div class="summary-grid" id="dashboardSummary"></div>
+          <p class="card-note">
+            Start here for your monthly shift calendar, expected pay, recurring bills, savings progress,
+            and recent spending without opening each section one by one.
+          </p>
+        </article>
+      </div>
+
+      <div class="panel-grid two-up">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Current pay cycle</p>
+              <h2>Expected pay for this period</h2>
+            </div>
+          </div>
+          <div class="summary-grid" id="dashboardPaySummary"></div>
+        </article>
+
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Money snapshot</p>
+              <h2>Expenses, subscriptions, and savings</h2>
+            </div>
+          </div>
+          <div class="summary-grid" id="dashboardFinanceSummary"></div>
+        </article>
+      </div>
+
+      <div class="panel-grid">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Shift calendar</p>
+              <h2>Monthly view of your saved shifts</h2>
+            </div>
+            <div class="calendar-nav">
+              <button class="button ghost-button" data-action="calendar-prev" type="button">Previous month</button>
+              <strong class="calendar-month-label" id="dashboardCalendarMonthLabel"></strong>
+              <button class="button ghost-button" data-action="calendar-next" type="button">Next month</button>
+            </div>
+          </div>
+
+          <div class="calendar-shell">
+            <div class="calendar-grid" id="dashboardCalendarGrid"></div>
+          </div>
+          <p class="card-note">
+            The dashboard calendar reflects every shift you saved, including overnight spillover onto the next date.
+          </p>
+        </article>
+      </div>
+
+      <div class="panel-grid two-up">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Shift snapshot</p>
+              <h2>Upcoming and recent shifts</h2>
+            </div>
+          </div>
+          <div class="snapshot-list" id="dashboardShiftPreview"></div>
+        </article>
+
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Upcoming charges</p>
+              <h2>Recurring subscriptions on the horizon</h2>
+            </div>
+          </div>
+          <div class="snapshot-list" id="dashboardSubscriptionPreview"></div>
+        </article>
+      </div>
+
+      <div class="panel-grid two-up">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Recent spending</p>
+              <h2>Latest expenses added</h2>
+            </div>
+          </div>
+          <div class="snapshot-list" id="dashboardExpensePreview"></div>
+        </article>
+
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Savings progress</p>
+              <h2>Goals worth watching</h2>
+            </div>
+          </div>
+          <div class="snapshot-list" id="dashboardGoalPreview"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="salary">
+      <div class="subtab-bar" aria-label="Salary workspace">
+        <button class="subtab-button is-active" data-salary-view="overview" type="button">Shift overview</button>
+        <button class="subtab-button" data-salary-view="setup" type="button">Salary setup</button>
+        <button class="subtab-button" data-salary-view="holidays" type="button">Public holidays</button>
+        <button class="subtab-button" data-salary-view="guide" type="button">Instructions</button>
+      </div>
+
+      <section class="salary-view" data-salary-panel="guide">
+        <div class="panel-grid">
+          <article class="card intro-card">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Fair Work first</p>
+                <h2>Set the award before you add shifts</h2>
+              </div>
+            </div>
+            <ol class="guide-list">
+              <li>Open the official Fair Work Award Finder and confirm the award, classification, employment type, and rate date.</li>
+              <li>Copy the final hourly rates into the day, evening, overnight, weekend, and public-holiday fields in Salary Setup.</li>
+              <li>Add your public holiday dates, then enter each shift with the date, time on, time off, and unpaid break minutes.</li>
+            </ol>
+            <p class="card-note">
+              Overnight shifts are split around midnight automatically. Holiday dates and timed holiday windows are
+              applied minute by minute so the public-holiday rate flows through the right hours of the shift.
+            </p>
+            <div class="hero-actions guide-actions">
+              <a class="button primary-button" href="https://calculate.fairwork.gov.au/FindYourAward" rel="noreferrer" target="_blank">Open Fair Work Award Finder</a>
+              <a class="button ghost-button" href="https://www.ato.gov.au/tax-rates-and-codes/tax-rates-australian-residents" rel="noreferrer" target="_blank">Check ATO tax rates</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="salary-view is-active" data-salary-panel="overview">
+        <div class="panel-grid">
+          <article class="card">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Latest pay run</p>
+                <h2>Estimated gross, tax, and net</h2>
+              </div>
+            </div>
+            <div class="summary-grid" id="salaryPreview"></div>
+            <p class="card-note">
+              Tax is estimated from current ATO headline income tax rates and your saved pay frequency.
+              Exact PAYG withholding can differ because of offsets, deductions, study loans, Medicare reductions,
+              and payroll rounding.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="salary-view" data-salary-panel="setup">
+        <div class="panel-grid">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Salary setup</p>
+              <h2>Award and tax profile</h2>
+            </div>
+          </div>
+
+          <form class="form-grid" id="settingsForm">
+            <label class="field">
+              <span>Job label</span>
+              <input name="jobLabel" placeholder="Cafe roster" required type="text">
+            </label>
+
+            <label class="field">
+              <span>Award name</span>
+              <input name="awardName" placeholder="Hospitality Industry (General) Award 2020" required type="text">
+            </label>
+
+            <label class="field">
+              <span>Award code</span>
+              <input name="awardCode" placeholder="MA000009" type="text">
+            </label>
+
+            <label class="field">
+              <span>Classification</span>
+              <input name="classification" placeholder="Food and beverage attendant grade 2" required type="text">
+            </label>
+
+            <label class="field">
+              <span>Employment type</span>
+              <select name="employmentType">
+                <option value="casual">Casual</option>
+                <option value="part-time">Part-time</option>
+                <option value="full-time">Full-time</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Work state or territory</span>
+              <select name="workState">
+                <option value="NSW">New South Wales</option>
+                <option value="ACT">Australian Capital Territory</option>
+                <option value="NT">Northern Territory</option>
+                <option value="QLD">Queensland</option>
+                <option value="SA">South Australia</option>
+                <option value="TAS">Tasmania</option>
+                <option value="VIC">Victoria</option>
+                <option value="WA">Western Australia</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Rates current from</span>
+              <input name="rateDate" required type="date">
+            </label>
+
+            <label class="field">
+              <span>Pay frequency</span>
+              <select name="payFrequency">
+                <option value="weekly">Weekly</option>
+                <option selected value="fortnightly">Fortnightly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Pay cycle anchor</span>
+              <input name="cycleAnchor" required type="date">
+            </label>
+
+            <label class="field">
+              <span>Tax residency</span>
+              <select name="taxResidency">
+                <option value="resident">Australian resident</option>
+                <option value="foreignResident">Foreign resident</option>
+                <option value="workingHolidayMaker">Working holiday maker</option>
+              </select>
+            </label>
+
+            <label class="field checkbox-field">
+              <input checked name="includeMedicare" type="checkbox">
+              <span>Add 2% Medicare levy to resident tax estimates</span>
+            </label>
+
+            <label class="field checkbox-field">
+              <input checked name="hasTFN" type="checkbox">
+              <span>TFN quoted for this job</span>
+            </label>
+
+            <label class="field">
+              <span>Evening starts</span>
+              <input name="eveningStart" required type="time">
+            </label>
+
+            <label class="field">
+              <span>Overnight starts</span>
+              <input name="overnightStart" required type="time">
+            </label>
+
+            <label class="field">
+              <span>Day starts again</span>
+              <input name="dayStart" required type="time">
+            </label>
+
+            <div class="field field-span">
+              <span>Hourly rates copied from Fair Work</span>
+              <p class="field-help">
+                Enter the final hourly rates in dollars. If evening or overnight is the same as the ordinary rate,
+                you can leave it blank and Shiftwise will fall back to the ordinary rate for that day type.
+              </p>
+
+              <div class="rate-matrix">
+                <div class="rate-row rate-header">
+                  <span>Day type</span>
+                  <span>Day</span>
+                  <span>Evening</span>
+                  <span>Overnight</span>
+                </div>
+
+                <div class="rate-row">
+                  <span>Weekday</span>
+                  <input min="0" name="weekdayDay" step="0.01" type="number">
+                  <input min="0" name="weekdayEvening" step="0.01" type="number">
+                  <input min="0" name="weekdayOvernight" step="0.01" type="number">
+                </div>
+
+                <div class="rate-row">
+                  <span>Saturday</span>
+                  <input min="0" name="saturdayDay" step="0.01" type="number">
+                  <input min="0" name="saturdayEvening" step="0.01" type="number">
+                  <input min="0" name="saturdayOvernight" step="0.01" type="number">
+                </div>
+
+                <div class="rate-row">
+                  <span>Sunday</span>
+                  <input min="0" name="sundayDay" step="0.01" type="number">
+                  <input min="0" name="sundayEvening" step="0.01" type="number">
+                  <input min="0" name="sundayOvernight" step="0.01" type="number">
+                </div>
+
+                <div class="rate-row">
+                  <span>Public holiday</span>
+                  <input min="0" name="publicHolidayDay" step="0.01" type="number">
+                  <input min="0" name="publicHolidayEvening" step="0.01" type="number">
+                  <input min="0" name="publicHolidayOvernight" step="0.01" type="number">
+                </div>
+              </div>
+            </div>
+
+            <label class="field field-span">
+              <span>Notes from Fair Work</span>
+              <textarea name="awardNotes" placeholder="Paste the award summary, allowance reminders, or special public-holiday notes here."></textarea>
+            </label>
+
+            <div class="form-actions field-span">
+              <button class="button primary-button" type="submit">Save salary setup</button>
+            </div>
+          </form>
+        </article>
+        </div>
+      </section>
+
+      <section class="salary-view" data-salary-panel="holidays">
+        <div class="panel-grid">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Holiday calendar</p>
+              <h2>Public holiday dates</h2>
+            </div>
+          </div>
+
+          <div class="preset-box">
+            <p class="field-help">
+              Load the official state or territory-wide public holidays for your saved work location.
+              Built-in presets cover 2026 and 2027, including part-day public holidays where Fair Work lists them.
+            </p>
+            <div class="compact-form-actions">
+              <button class="button secondary-button" data-action="load-official-holidays" type="button">Load official holidays for saved state</button>
+            </div>
+          </div>
+
+          <form class="compact-form" id="holidayForm">
+            <label class="field">
+              <span>Date</span>
+              <input name="date" required type="date">
+            </label>
+
+            <label class="field">
+              <span>Label</span>
+              <input name="label" placeholder="ANZAC Day" type="text">
+            </label>
+
+            <label class="field">
+              <span>Starts at</span>
+              <input name="startTime" type="time">
+            </label>
+
+            <label class="field">
+              <span>Ends at</span>
+              <input name="endTime" type="time">
+            </label>
+
+            <div class="compact-form-actions field-span">
+              <button class="button secondary-button" type="submit">Add holiday</button>
+            </div>
+          </form>
+
+          <div class="chip-list" id="holidayList"></div>
+
+          <div class="section-subheading">Rate preview</div>
+          <div class="rate-preview" id="ratePreview"></div>
+          <p class="card-note">
+            If a shift crosses midnight, the app checks each date and time window against this list so only the holiday
+            portion uses the public-holiday rates. Regional or city-only holidays that are not part of the built-in presets can still be added manually here.
+          </p>
+        </article>
+      </div>
+      </section>
+
+      <section class="salary-view is-active" data-salary-panel="overview">
+      <div class="panel-grid two-up">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Shift entry</p>
+              <h2>Add time on, time off, and break minutes</h2>
+            </div>
+          </div>
+
+          <form class="compact-form" id="shiftForm">
+            <label class="field">
+              <span>Date</span>
+              <input name="date" required type="date">
+            </label>
+
+            <label class="field">
+              <span>Time on</span>
+              <input name="startTime" required type="time">
+            </label>
+
+            <label class="field">
+              <span>Time off</span>
+              <input name="endTime" required type="time">
+            </label>
+
+            <label class="field">
+              <span>Break minutes</span>
+              <input min="0" name="breakMinutes" required step="1" type="number">
+            </label>
+
+            <label class="field field-span">
+              <span>Shift note</span>
+              <input name="notes" placeholder="Optional: closing shift, opening prep, public holiday event" type="text">
+            </label>
+
+            <div class="compact-form-actions field-span">
+              <button class="button primary-button" type="submit">Save shift</button>
+            </div>
+          </form>
+
+          <p class="card-note">
+            If the finish time is earlier than the start time, Shiftwise treats it as an overnight shift into the next day.
+            Unpaid break minutes are spread proportionally across the shift because the exact break timing is usually not on the payslip.
+          </p>
+        </article>
+
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Pay periods</p>
+              <h2>Grouped by your saved pay cycle</h2>
+            </div>
+          </div>
+          <div class="pay-period-list" id="payPeriodList"></div>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Shift calendar</p>
+            <h2>Monthly view of your saved shifts</h2>
+          </div>
+          <div class="calendar-nav">
+            <button class="button ghost-button" data-action="calendar-prev" type="button">Previous month</button>
+            <strong class="calendar-month-label" id="calendarMonthLabel"></strong>
+            <button class="button ghost-button" data-action="calendar-next" type="button">Next month</button>
+          </div>
+        </div>
+
+        <div class="calendar-shell">
+          <div class="calendar-grid" id="calendarGrid"></div>
+        </div>
+        <p class="card-note">
+          The calendar reflects the shifts you added and shows overnight shifts on each date they touch.
+        </p>
+      </article>
+
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Shift ledger</p>
+            <h2>Every saved shift and its rate breakdown</h2>
+          </div>
+        </div>
+        <div class="entry-list" id="shiftList"></div>
+      </article>
+      </section>
+    </section>
+
+    <section class="panel" data-panel="expenses">
+      <div class="panel-grid two-up">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Expense tracker</p>
+              <h2>Log spending by date and category</h2>
+            </div>
+          </div>
+
+          <form class="compact-form" id="expenseForm">
+            <label class="field">
+              <span>Date</span>
+              <input name="date" required type="date">
+            </label>
+
+            <label class="field">
+              <span>Category</span>
+              <input name="category" placeholder="Groceries" required type="text">
+            </label>
+
+            <label class="field">
+              <span>Amount</span>
+              <input min="0" name="amount" required step="0.01" type="number">
+            </label>
+
+            <label class="field">
+              <span>Merchant</span>
+              <input name="merchant" placeholder="Woolworths" type="text">
+            </label>
+
+            <label class="field field-span">
+              <span>Note</span>
+              <input name="note" placeholder="Optional note" type="text">
+            </label>
+
+            <div class="compact-form-actions field-span">
+              <button class="button primary-button" type="submit">Add expense</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Spend snapshot</p>
+              <h2>This month and the last 30 days</h2>
+            </div>
+          </div>
+          <div class="summary-grid" id="expenseSummary"></div>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Expense list</p>
+            <h2>Recent spending</h2>
+          </div>
+        </div>
+        <div class="entry-list" id="expenseList"></div>
+      </article>
+    </section>
+
+    <section class="panel" data-panel="subscriptions">
+      <div class="panel-grid two-up">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Subscription tracker</p>
+              <h2>Keep recurring charges visible</h2>
+            </div>
+          </div>
+
+          <form class="compact-form" id="subscriptionForm">
+            <label class="field">
+              <span>Name</span>
+              <input name="name" placeholder="Spotify" required type="text">
+            </label>
+
+            <label class="field">
+              <span>Amount</span>
+              <input min="0" name="amount" required step="0.01" type="number">
+            </label>
+
+            <label class="field">
+              <span>Frequency</span>
+              <select name="frequency">
+                <option value="weekly">Weekly</option>
+                <option value="fortnightly">Fortnightly</option>
+                <option selected value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Next charge</span>
+              <input name="nextCharge" required type="date">
+            </label>
+
+            <label class="field field-span">
+              <span>Note</span>
+              <input name="note" placeholder="Plan, family share, cancellation date" type="text">
+            </label>
+
+            <div class="compact-form-actions field-span">
+              <button class="button primary-button" type="submit">Add subscription</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Recurring cost summary</p>
+              <h2>Monthly, yearly, and next 30 days</h2>
+            </div>
+          </div>
+          <div class="summary-grid" id="subscriptionSummary"></div>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Subscription list</p>
+            <h2>Upcoming charges</h2>
+          </div>
+        </div>
+        <div class="entry-list" id="subscriptionList"></div>
+      </article>
+    </section>
+
+    <section class="panel" data-panel="savings">
+      <div class="panel-grid two-up">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Savings tracker</p>
+              <h2>Save toward goals with a running pace</h2>
+            </div>
+          </div>
+
+          <form class="compact-form" id="savingsForm">
+            <label class="field">
+              <span>Goal name</span>
+              <input name="name" placeholder="Emergency fund" required type="text">
+            </label>
+
+            <label class="field">
+              <span>Target amount</span>
+              <input min="0" name="targetAmount" required step="0.01" type="number">
+            </label>
+
+            <label class="field">
+              <span>Saved so far</span>
+              <input min="0" name="currentAmount" required step="0.01" type="number">
+            </label>
+
+            <label class="field">
+              <span>Planned monthly contribution</span>
+              <input min="0" name="monthlyContribution" required step="0.01" type="number">
+            </label>
+
+            <label class="field field-span">
+              <span>Target date</span>
+              <input name="targetDate" type="date">
+            </label>
+
+            <div class="compact-form-actions field-span">
+              <button class="button primary-button" type="submit">Add savings goal</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Goal summary</p>
+              <h2>Saved, target, and remaining</h2>
+            </div>
+          </div>
+          <div class="summary-grid" id="savingsSummary"></div>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Savings goals</p>
+            <h2>Progress at a glance</h2>
+          </div>
+        </div>
+        <div class="goal-list" id="goalList"></div>
+      </article>
+    </section>
+
+    <section class="panel" data-panel="debts">
+      <div class="panel-grid two-up">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Debt tracker</p>
+              <h2>Keep balances and repayments visible</h2>
+            </div>
+          </div>
+
+          <form class="compact-form" id="debtForm">
+            <label class="field">
+              <span>Debt name</span>
+              <input name="name" placeholder="Credit card" required type="text">
+            </label>
+
+            <label class="field">
+              <span>Lender or provider</span>
+              <input name="provider" placeholder="ANZ" type="text">
+            </label>
+
+            <label class="field">
+              <span>Current balance</span>
+              <input min="0" name="balance" required step="0.01" type="number">
+            </label>
+
+            <label class="field">
+              <span>Planned monthly repayment</span>
+              <input min="0" name="monthlyPayment" required step="0.01" type="number">
+            </label>
+
+            <label class="field">
+              <span>Interest rate %</span>
+              <input min="0" name="interestRate" step="0.01" type="number">
+            </label>
+
+            <label class="field">
+              <span>Next due date</span>
+              <input name="dueDate" type="date">
+            </label>
+
+            <label class="field field-span">
+              <span>Note</span>
+              <input name="note" placeholder="Minimum payment, interest-free period, consolidation plan" type="text">
+            </label>
+
+            <div class="compact-form-actions field-span">
+              <button class="button primary-button" type="submit">Add debt</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Debt summary</p>
+              <h2>Balance, repayments, and due dates</h2>
+            </div>
+          </div>
+          <div class="summary-grid" id="debtSummary"></div>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Debt list</p>
+            <h2>What you are currently paying down</h2>
+          </div>
+        </div>
+        <div class="entry-list" id="debtList"></div>
+      </article>
+    </section>
+  </main>
+
+  <script defer src="script.js"></script>
+</body>
+</html>

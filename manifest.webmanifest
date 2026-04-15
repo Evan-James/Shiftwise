@@ -1,0 +1,26 @@
+{
+  "name": "Shiftwise AU",
+  "short_name": "Shiftwise",
+  "description": "Award-guided pay, tax, shifts, expenses, subscriptions, and savings tracking for Australian workers.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fbfbf7",
+  "theme_color": "#6d8196",
+  "orientation": "portrait",
+  "categories": ["finance", "productivity", "business"],
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
