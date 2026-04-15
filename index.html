@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body data-shiftwise-app="main">
   <div class="ambient ambient-one"></div>
   <div class="ambient ambient-two"></div>
   <div class="ambient ambient-three"></div>
@@ -24,48 +24,31 @@
         <p class="eyebrow">Local login</p>
         <h2 class="login-title">Unlock your Shiftwise account</h2>
         <p class="field-help">
-          Enter your username or PIN to open the data saved for you on this browser.
+          Enter your email, username, or PIN to open the data saved for you on this browser.
         </p>
         <div class="status-banner login-status hidden" id="loginStatus"></div>
 
         <form class="login-form" id="loginForm">
           <label class="field field-span">
-            <span>Username or PIN</span>
-            <input autocomplete="username" name="credential" placeholder="sam or 4821" type="text">
+            <span>Email, username, or PIN</span>
+            <input autocomplete="username" name="credential" placeholder="sam@example.com or 4821" type="text">
           </label>
 
           <div class="compact-form-actions field-span">
             <button class="button primary-button" type="submit">Unlock app</button>
           </div>
         </form>
-
-        <div class="login-account-list" id="loginAccountList"></div>
       </div>
 
       <div class="login-side">
-        <p class="section-kicker">Create local account</p>
-        <h3 class="login-side-title">Add another person to this browser</h3>
+        <p class="section-kicker">Managed access</p>
+        <h3 class="login-side-title">Accounts are issued from the separate admin panel</h3>
 
-        <form class="compact-form" id="loginCreateForm">
-          <label class="field">
-            <span>Display name</span>
-            <input name="displayName" placeholder="Sam" required type="text">
-          </label>
-
-          <label class="field">
-            <span>Username</span>
-            <input autocapitalize="off" name="username" placeholder="sam" required type="text">
-          </label>
-
-          <label class="field field-span">
-            <span>PIN</span>
-            <input inputmode="numeric" name="pin" placeholder="Optional 4-6 digits" type="password">
-          </label>
-
-          <div class="compact-form-actions field-span">
-            <button class="button secondary-button" type="submit">Create account</button>
-          </div>
-        </form>
+        <p class="field-help">
+          Buyers cannot create their own account from this screen. Add each customer in the separate
+          admin page with their email and optional PIN, then they can unlock Shiftwise on this device
+          with the credentials you issued.
+        </p>
 
         <div class="compact-form-actions login-side-actions">
           <button class="button ghost-button" id="loginImportDataButton" type="button">Import backup</button>
@@ -73,7 +56,8 @@
         </div>
 
         <p class="field-help">
-          Install Shiftwise on Android or iPhone for offline use, then use backup export and import to move local data between devices.
+          Install Shiftwise on Android or iPhone for offline use. This device can keep approved accounts
+          available offline after the admin has already added them here.
         </p>
       </div>
     </section>
@@ -93,8 +77,8 @@
           <p class="section-kicker">Account</p>
           <h2 class="profile-title">Signed in on this browser</h2>
           <p class="field-help">
-            Each local account keeps its own award setup, holidays, shifts, expenses, subscriptions,
-            savings goals, and debts. Use switch account to return to the login page.
+            Each approved account keeps its own award setup, holidays, shifts, expenses, subscriptions,
+            savings goals, and debts. Access is managed from the separate admin panel.
           </p>
         </div>
 
@@ -103,7 +87,6 @@
 
           <div class="profile-delete-row account-actions">
             <button class="button secondary-button" id="lockAppButton" type="button">Switch account</button>
-            <button class="button ghost-button" id="deleteProfileButton" type="button">Delete current account</button>
           </div>
         </div>
       </section>
@@ -130,12 +113,12 @@
     <div class="status-banner hidden" id="appStatus"></div>
 
     <nav aria-label="Finance sections" class="tab-bar">
-      <button class="tab-button is-active" data-tab="dashboard" type="button">Dashboard</button>
-      <button class="tab-button" data-tab="salary" type="button">Salary</button>
-      <button class="tab-button" data-tab="expenses" type="button">Expenses</button>
-      <button class="tab-button" data-tab="subscriptions" type="button">Subscriptions</button>
-      <button class="tab-button" data-tab="savings" type="button">Savings</button>
-      <button class="tab-button" data-tab="debts" type="button">Debts</button>
+      <button class="tab-button is-active" data-short-label="Home" data-tab="dashboard" type="button">Dashboard</button>
+      <button class="tab-button" data-short-label="Pay" data-tab="salary" type="button">Salary</button>
+      <button class="tab-button" data-short-label="Spend" data-tab="expenses" type="button">Expenses</button>
+      <button class="tab-button" data-short-label="Bills" data-tab="subscriptions" type="button">Subscriptions</button>
+      <button class="tab-button" data-short-label="Save" data-tab="savings" type="button">Savings</button>
+      <button class="tab-button" data-short-label="Debt" data-tab="debts" type="button">Debts</button>
     </nav>
 
     <section class="panel is-active" data-panel="dashboard">

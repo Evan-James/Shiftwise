@@ -33,6 +33,11 @@
     light: "#fbfbf7",
     dark: "#171b20"
   };
+  const GOOGLE_LOGIN_SCOPE = "openid email profile";
+  const GOOGLE_CALENDAR_SCOPE = `${GOOGLE_LOGIN_SCOPE} https://www.googleapis.com/auth/calendar`;
+  const GOOGLE_OPENID_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration";
+  const GOOGLE_CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3";
+  const GOOGLE_CLIENT_ID_STORAGE_KEY = "shiftwise-au-google-client-id";
   const PAY_MULTIPLIERS = {
     weekly: 52,
     fortnightly: 26,
@@ -348,14 +353,85 @@
     return cleaned || "profile";
   }
 
+  function normalizeEmail(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
   function normalizePin(pin) {
     return String(pin || "").replace(/\D/g, "");
+  }
+
+  function loadSavedGoogleClientId() {
+    try {
+      return String(global.localStorage?.getItem(GOOGLE_CLIENT_ID_STORAGE_KEY) || "").trim();
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function saveGoogleClientId(value) {
+    const normalized = String(value || "").trim();
+
+    try {
+      if (normalized) {
+        global.localStorage?.setItem(GOOGLE_CLIENT_ID_STORAGE_KEY, normalized);
+      } else {
+        global.localStorage?.removeItem(GOOGLE_CLIENT_ID_STORAGE_KEY);
+      }
+    } catch (error) {
+      // Ignore localStorage write issues and keep the in-memory flow working.
+    }
+
+    return normalized;
+  }
+
+  function getEmbeddedGoogleClientId() {
+    if (typeof document === "undefined") {
+      return "";
+    }
+
+    const fromMeta = document.querySelector('meta[name="google-oauth-client-id"]')?.getAttribute("content") || "";
+    const fromGlobal = typeof global.SHIFTWISE_GOOGLE_CLIENT_ID === "string" ? global.SHIFTWISE_GOOGLE_CLIENT_ID : "";
+    return String(fromGlobal || fromMeta).trim();
+  }
+
+  function getGoogleClientId() {
+    return getEmbeddedGoogleClientId() || loadSavedGoogleClientId();
+  }
+
+  function createDefaultGoogleProfile() {
+    return {
+      email: "",
+      syncEmail: "",
+      displayName: "",
+      sub: "",
+      calendarId: "",
+      calendarSummary: "",
+      lastSyncedAt: ""
+    };
+  }
+
+  function mergeGoogleProfile(rawGoogle) {
+    const base = createDefaultGoogleProfile();
+
+    return {
+      ...base,
+      ...(rawGoogle || {}),
+      email: normalizeEmail(rawGoogle?.email || ""),
+      syncEmail: normalizeEmail(rawGoogle?.syncEmail || rawGoogle?.email || ""),
+      displayName: String(rawGoogle?.displayName || "").trim(),
+      sub: String(rawGoogle?.sub || "").trim(),
+      calendarId: String(rawGoogle?.calendarId || "").trim(),
+      calendarSummary: String(rawGoogle?.calendarSummary || "").trim(),
+      lastSyncedAt: String(rawGoogle?.lastSyncedAt || "").trim()
+    };
   }
 
   function createDefaultLogin(name = "Primary profile") {
     const preferredName = name === "Primary profile" ? "primary" : name;
 
     return {
+      email: "",
       username: buildBaseUsername(preferredName),
       pin: ""
     };
@@ -366,6 +442,7 @@
       id: createId("profile"),
       name,
       login: createDefaultLogin(name),
+      google: createDefaultGoogleProfile(),
       activeCalendarMonth: getTodayKey().slice(0, 7),
       settings: createDefaultSettings(),
       holidays: [],
@@ -419,6 +496,16 @@
 
   function formatDate(dateKey) {
     return DATE_FORMATTER.format(parseDateKey(dateKey));
+  }
+
+  function formatDateTimeValue(value) {
+    const date = value instanceof Date ? value : new Date(value);
+
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+      return "";
+    }
+
+    return `${DATE_FORMATTER.format(date)} ${TIME_FORMATTER.format(date)}`;
   }
 
   function formatShortDate(dateKey) {
@@ -568,6 +655,7 @@
       id: rawProfile?.id || base.id,
       name: rawProfile?.name || fallbackName,
       login: mergeLogin(rawProfile?.login, rawProfile?.name || fallbackName),
+      google: mergeGoogleProfile(rawProfile?.google),
       activeCalendarMonth: rawProfile?.activeCalendarMonth || base.activeCalendarMonth,
       settings: mergeSettings(rawProfile?.settings),
       holidays: dedupeHolidays(normalizeHolidays(rawProfile?.holidays)).sort((left, right) => {
@@ -677,20 +765,27 @@
     const base = createDefaultLogin(profileName);
 
     return {
+      email: normalizeEmail(rawLogin?.email || ""),
       username: buildBaseUsername(rawLogin?.username || base.username),
       pin: normalizePin(rawLogin?.pin || "")
     };
   }
 
   function ensureUniqueProfileLogins(profiles) {
+    const usedEmails = new Set();
     const usedUsernames = new Set();
     const usedPins = new Set();
 
     profiles.forEach((profile, index) => {
       const login = mergeLogin(profile.login, profile.name || `Profile ${index + 1}`);
+      const email = login.email && !usedEmails.has(login.email) ? login.email : "";
       const baseUsername = buildBaseUsername(login.username || profile.name || `profile${index + 1}`);
       let username = baseUsername;
       let counter = 2;
+
+      if (email) {
+        usedEmails.add(email);
+      }
 
       while (usedUsernames.has(username)) {
         username = `${baseUsername}${counter}`;
@@ -706,6 +801,7 @@
       }
 
       profile.login = {
+        email,
         username,
         pin
       };
@@ -716,16 +812,28 @@
 
   function findProfileByCredential(credential, profiles) {
     const trimmed = String(credential || "").trim();
+    const email = normalizeEmail(trimmed);
     const username = buildBaseUsername(trimmed);
     const pin = normalizePin(trimmed);
-    const usernameMatches = profiles.filter((profile) => profile.login?.username === username);
+    const allowedProfiles = profiles.filter((profile) => normalizeEmail(profile.login?.email || ""));
+    const emailMatches = email ? allowedProfiles.filter((profile) => normalizeEmail(profile.login?.email || "") === email) : [];
+
+    if (emailMatches.length === 1) {
+      return { profile: emailMatches[0], error: "" };
+    }
+
+    if (emailMatches.length > 1) {
+      return { profile: null, error: "That email matches more than one local account. Use a PIN instead." };
+    }
+
+    const usernameMatches = allowedProfiles.filter((profile) => profile.login?.username === username);
 
     if (usernameMatches.length === 1) {
       return { profile: usernameMatches[0], error: "" };
     }
 
     if (pin) {
-      const pinMatches = profiles.filter((profile) => profile.login?.pin && profile.login.pin === pin);
+      const pinMatches = allowedProfiles.filter((profile) => profile.login?.pin && profile.login.pin === pin);
 
       if (pinMatches.length === 1) {
         return { profile: pinMatches[0], error: "" };
@@ -736,7 +844,34 @@
       }
     }
 
-    return { profile: null, error: "No local account matched that username or PIN." };
+    if (allowedProfiles.length === 0) {
+      return { profile: null, error: "No approved users have been added yet. Set up the first email in the separate admin panel." };
+    }
+
+    return { profile: null, error: "No approved account matched that email, username, or PIN." };
+  }
+
+  function findProfileByGoogleIdentity(identity, profiles) {
+    const sub = String(identity?.sub || "").trim();
+    const email = normalizeEmail(identity?.email || "");
+
+    if (sub) {
+      const bySub = profiles.find((profile) => String(profile?.google?.sub || "").trim() === sub);
+
+      if (bySub) {
+        return bySub;
+      }
+    }
+
+    if (!email) {
+      return null;
+    }
+
+    return profiles.find((profile) => {
+      const googleEmail = normalizeEmail(profile?.google?.email || "");
+      const syncEmail = normalizeEmail(profile?.google?.syncEmail || "");
+      return googleEmail === email || syncEmail === email;
+    }) || null;
   }
 
   function normalizeTheme(theme) {
@@ -1415,6 +1550,8 @@
     state: createDefaultState(),
     isLocked: true,
     deferredInstallPrompt: null,
+    googleDiscoveryPromise: null,
+    googleTokenCache: {},
 
     init() {
       this.state = loadState();
@@ -1439,9 +1576,18 @@
         loginShell: document.getElementById("loginShell"),
         loginForm: document.getElementById("loginForm"),
         loginCreateForm: document.getElementById("loginCreateForm"),
+        googleLoginButton: document.getElementById("googleLoginButton"),
+        googleLoginHelp: document.getElementById("googleLoginHelp"),
+        googleClientIdForms: Array.from(document.querySelectorAll("[data-google-client-id-form]")),
+        googleClientIdInputs: Array.from(document.querySelectorAll("[data-google-client-id-input]")),
+        googleClientIdHelp: Array.from(document.querySelectorAll("[data-google-client-id-help]")),
         loginAccountList: document.getElementById("loginAccountList"),
         heroMetrics: document.getElementById("heroMetrics"),
         activeAccountSummary: document.getElementById("activeAccountSummary"),
+        googleSyncForm: document.getElementById("googleSyncForm"),
+        googleSyncNote: document.getElementById("googleSyncNote"),
+        connectGoogleCalendarButton: document.getElementById("connectGoogleCalendarButton"),
+        syncGoogleCalendarButton: document.getElementById("syncGoogleCalendarButton"),
         lockAppButton: document.getElementById("lockAppButton"),
         deleteProfileButton: document.getElementById("deleteProfileButton"),
         dashboardBadges: document.getElementById("dashboardBadges"),
@@ -1517,18 +1663,56 @@
         this.handleLoginSubmit();
       });
 
-      this.dom.loginCreateForm.addEventListener("submit", (event) => {
-        event.preventDefault();
-        this.handleProfileCreate();
+      if (this.dom.loginCreateForm) {
+        this.dom.loginCreateForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          this.handleProfileCreate();
+        });
+      }
+
+      if (this.dom.googleLoginButton) {
+        this.dom.googleLoginButton.addEventListener("click", () => {
+          this.handleGoogleLoginClick();
+        });
+      }
+
+      this.dom.googleClientIdForms.forEach((form) => {
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          this.handleGoogleClientIdSave(form);
+        });
       });
 
-      this.dom.lockAppButton.addEventListener("click", () => {
-        this.lockApp();
-      });
+      if (this.dom.lockAppButton) {
+        this.dom.lockAppButton.addEventListener("click", () => {
+          this.lockApp();
+        });
+      }
 
-      this.dom.deleteProfileButton.addEventListener("click", () => {
-        this.handleProfileDelete();
-      });
+      if (this.dom.deleteProfileButton) {
+        this.dom.deleteProfileButton.addEventListener("click", () => {
+          this.handleProfileDelete();
+        });
+      }
+
+      if (this.dom.googleSyncForm) {
+        this.dom.googleSyncForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          this.handleGoogleSyncEmailSave();
+        });
+      }
+
+      if (this.dom.connectGoogleCalendarButton) {
+        this.dom.connectGoogleCalendarButton.addEventListener("click", () => {
+          this.handleGoogleCalendarConnect();
+        });
+      }
+
+      if (this.dom.syncGoogleCalendarButton) {
+        this.dom.syncGoogleCalendarButton.addEventListener("click", () => {
+          this.handleGoogleCalendarSync();
+        });
+      }
 
       this.dom.settingsForm.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -1647,7 +1831,13 @@
       const settings = this.state.settings;
 
       this.dom.loginForm.reset();
-      this.dom.loginCreateForm.reset();
+      if (this.dom.loginCreateForm) {
+        this.dom.loginCreateForm.reset();
+      }
+
+      if (this.dom.googleSyncForm) {
+        this.dom.googleSyncForm.elements.syncEmail.value = this.getActiveProfile()?.google?.syncEmail || "";
+      }
       this.dom.settingsForm.elements.jobLabel.value = settings.jobLabel || "";
       this.dom.settingsForm.elements.awardName.value = settings.awardName || "";
       this.dom.settingsForm.elements.awardCode.value = settings.awardCode || "";
@@ -1717,6 +1907,464 @@
       }
     },
 
+    async waitForGoogleClient(timeoutMs = 8000) {
+      const clientId = getGoogleClientId();
+
+      if (!clientId) {
+        return false;
+      }
+
+      if (global.google?.accounts?.oauth2) {
+        return true;
+      }
+
+      const start = Date.now();
+
+      while (Date.now() - start < timeoutMs) {
+        await new Promise((resolve) => global.setTimeout(resolve, 120));
+
+        if (global.google?.accounts?.oauth2) {
+          return true;
+        }
+      }
+
+      return false;
+    },
+
+    async requestGoogleToken(scopes, options = {}) {
+      const clientId = getGoogleClientId();
+
+      if (!clientId) {
+        throw new Error("Save your Google OAuth client ID in Shiftwise before using Google login or Calendar sync.");
+      }
+
+      const isReady = await this.waitForGoogleClient();
+
+      if (!isReady) {
+        throw new Error("Google sign-in is still loading. Try again in a moment.");
+      }
+
+      const cacheKey = `${scopes}|${normalizeEmail(options.loginHint || "")}`;
+      const cached = this.googleTokenCache[cacheKey];
+
+      if (!options.prompt && cached && cached.expiresAt > Date.now() + 60000) {
+        return cached.response;
+      }
+
+      return new Promise((resolve, reject) => {
+        const tokenClient = global.google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: scopes,
+          callback: (response) => {
+            if (!response || response.error) {
+              reject(new Error(response?.error_description || response?.error || "Google authorization did not finish."));
+              return;
+            }
+
+            this.googleTokenCache[cacheKey] = {
+              response,
+              expiresAt: Date.now() + Math.max((Number(response.expires_in) || 0) - 60, 0) * 1000
+            };
+            resolve(response);
+          },
+          error_callback: () => {
+            reject(new Error("Google sign-in was closed before it finished."));
+          }
+        });
+
+        tokenClient.requestAccessToken({
+          prompt: options.prompt ?? "",
+          login_hint: options.loginHint || undefined
+        });
+      });
+    },
+
+    async getGoogleUserInfoEndpoint() {
+      if (!this.googleDiscoveryPromise) {
+        this.googleDiscoveryPromise = fetch(GOOGLE_OPENID_DISCOVERY_URL)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("Could not load Google account details.");
+            }
+
+            return response.json();
+          })
+          .then((data) => data.userinfo_endpoint || "https://openidconnect.googleapis.com/v1/userinfo");
+      }
+
+      return this.googleDiscoveryPromise;
+    },
+
+    async fetchGoogleIdentity(accessToken) {
+      const endpoint = await this.getGoogleUserInfoEndpoint();
+      const response = await fetch(endpoint, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error("Could not read your Google account details.");
+      }
+
+      const data = await response.json();
+
+      return {
+        email: normalizeEmail(data.email || ""),
+        name: String(data.name || "").trim(),
+        sub: String(data.sub || "").trim()
+      };
+    },
+
+    updateGoogleProfile(profile, identity) {
+      profile.google = mergeGoogleProfile(profile.google);
+      profile.google.email = normalizeEmail(identity.email || profile.google.email || "");
+      profile.google.syncEmail = normalizeEmail(profile.google.syncEmail || identity.email || "");
+      profile.google.displayName = identity.name || profile.google.displayName || profile.name;
+      profile.google.sub = identity.sub || profile.google.sub || "";
+      return profile.google;
+    },
+
+    async googleApiRequest(path, options = {}) {
+      const url = new URL(path, `${GOOGLE_CALENDAR_API_BASE}/`);
+      const query = options.query || {};
+
+      Object.keys(query).forEach((key) => {
+        const value = query[key];
+
+        if (Array.isArray(value)) {
+          value.forEach((item) => url.searchParams.append(key, item));
+        } else if (value != null && value !== "") {
+          url.searchParams.append(key, value);
+        }
+      });
+
+      const response = await fetch(url.toString(), {
+        method: options.method || "GET",
+        headers: {
+          Authorization: `Bearer ${options.accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Google Calendar request failed.";
+
+        try {
+          const payload = await response.json();
+          errorMessage = payload?.error?.message || errorMessage;
+        } catch (error) {
+          // Ignore JSON parsing issues from empty error bodies.
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      if (response.status === 204) {
+        return null;
+      }
+
+      return response.json();
+    },
+
+    async ensureGoogleCalendar(profile, accessToken) {
+      profile.google = mergeGoogleProfile(profile.google);
+
+      if (profile.google.calendarId) {
+        return {
+          id: profile.google.calendarId,
+          summary: profile.google.calendarSummary || `Shiftwise AU - ${profile.name}`
+        };
+      }
+
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Australia/Sydney";
+      const calendar = await this.googleApiRequest("calendars", {
+        method: "POST",
+        accessToken,
+        body: {
+          summary: `Shiftwise AU - ${profile.name}`,
+          description: "One-way shift sync from Shiftwise AU",
+          timeZone
+        }
+      });
+
+      profile.google.calendarId = calendar.id || "";
+      profile.google.calendarSummary = calendar.summary || `Shiftwise AU - ${profile.name}`;
+      return calendar;
+    },
+
+    buildGoogleCalendarEvent(shift, profile) {
+      const settings = this.state.settings;
+      const payData = calculateShift(shift, settings, this.state.holidays);
+      const startDateTime = parseDateTime(shift.date, shift.startTime);
+      const endDateTime = getShiftEndDateTime(shift);
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Australia/Sydney";
+      const jobLabel = settings.jobLabel || "Shift";
+      const descriptionLines = [
+        `Shiftwise AU sync for ${profile.name}.`,
+        `Estimated gross pay: ${formatCurrency(payData.grossPay)}`,
+        `Unpaid break: ${shift.breakMinutes || 0} minutes`
+      ];
+
+      if (settings.awardName) {
+        descriptionLines.push(`Award: ${settings.awardName}`);
+      }
+
+      if (shift.notes) {
+        descriptionLines.push(`Notes: ${shift.notes}`);
+      }
+
+      return {
+        summary: `${jobLabel} shift`,
+        description: descriptionLines.join("\n"),
+        start: {
+          dateTime: startDateTime.toISOString(),
+          timeZone
+        },
+        end: {
+          dateTime: endDateTime.toISOString(),
+          timeZone
+        },
+        extendedProperties: {
+          private: {
+            shiftwiseApp: "shiftwise-au",
+            shiftwiseProfileId: profile.id,
+            shiftwiseShiftId: shift.id
+          }
+        }
+      };
+    },
+
+    focusGoogleClientIdInput() {
+      const input = this.dom.googleClientIdInputs.find((field) => !field.disabled && field.offsetParent !== null)
+        || this.dom.googleClientIdInputs.find((field) => !field.disabled)
+        || this.dom.googleClientIdInputs[0];
+
+      if (!input || typeof input.focus !== "function") {
+        return;
+      }
+
+      input.focus();
+
+      if (typeof input.select === "function") {
+        input.select();
+      }
+    },
+
+    handleGoogleClientIdSave(form) {
+      if (getEmbeddedGoogleClientId()) {
+        this.showStatus("Google login is already configured in this app build.");
+        this.renderProfiles();
+        return;
+      }
+
+      const clientId = String(form?.elements?.googleClientId?.value || "").trim();
+
+      if (clientId && !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/i.test(clientId)) {
+        this.focusGoogleClientIdInput();
+        this.showStatus("Enter a valid Google OAuth client ID ending in .apps.googleusercontent.com.", "error");
+        return;
+      }
+
+      saveGoogleClientId(clientId);
+      this.googleTokenCache = {};
+      this.renderProfiles();
+
+      if (clientId) {
+        this.showStatus("Google setup saved. You can now use Login with Google.");
+      } else {
+        this.showStatus("Saved Google setup was cleared from this device.");
+      }
+    },
+
+    async ensureGoogleCalendarConnection(promptValue = "") {
+      const profile = this.getActiveProfile();
+
+      if (!profile) {
+        throw new Error("No active account was found.");
+      }
+
+      profile.google = mergeGoogleProfile(profile.google);
+      const loginHint = profile.google.syncEmail || profile.google.email || "";
+      const tokenResponse = await this.requestGoogleToken(GOOGLE_CALENDAR_SCOPE, {
+        prompt: promptValue || (profile.google.calendarId ? "" : "select_account"),
+        loginHint
+      });
+      const identity = await this.fetchGoogleIdentity(tokenResponse.access_token);
+      const expectedEmail = normalizeEmail(profile.google.syncEmail || profile.google.email || "");
+
+      if (expectedEmail && identity.email && identity.email !== expectedEmail) {
+        throw new Error(`Google returned ${identity.email}. Save that Gmail in the sync field or choose the matching Google account.`);
+      }
+
+      this.updateGoogleProfile(profile, identity);
+      await this.ensureGoogleCalendar(profile, tokenResponse.access_token);
+      return { profile, tokenResponse, identity };
+    },
+
+    async handleGoogleLoginClick() {
+      if (!getGoogleClientId()) {
+        this.focusGoogleClientIdInput();
+        this.showStatus("Save your Google OAuth client ID first, then try Login with Google again.", "error");
+        return;
+      }
+
+      try {
+        const tokenResponse = await this.requestGoogleToken(GOOGLE_LOGIN_SCOPE, {
+          prompt: "select_account"
+        });
+        const identity = await this.fetchGoogleIdentity(tokenResponse.access_token);
+
+        if (!identity.email) {
+          throw new Error("Google did not return an email address for this account.");
+        }
+
+        syncActiveProfileFromTopLevel(this.state);
+        let profile = findProfileByGoogleIdentity(identity, this.state.profiles);
+
+        if (!profile) {
+          const displayName = identity.name || identity.email.split("@")[0] || "Google user";
+          const profileName = createUniqueProfileName(displayName, this.state.profiles);
+          const baseUsername = buildBaseUsername(identity.email.split("@")[0] || profileName);
+
+          profile = createDefaultProfile(profileName);
+          profile.login.username = createUniqueUsername(baseUsername, this.state.profiles);
+          this.updateGoogleProfile(profile, identity);
+          this.state.profiles.push(profile);
+        } else {
+          this.updateGoogleProfile(profile, identity);
+        }
+
+        this.state.activeTab = "dashboard";
+        this.state.activeSalaryView = "overview";
+        this.switchProfile(profile.id, `Signed in with Google as ${profile.name}.`);
+      } catch (error) {
+        this.showStatus(error.message || "Google login could not be completed.", "error");
+      }
+    },
+
+    handleGoogleSyncEmailSave() {
+      const profile = this.getActiveProfile();
+
+      if (!profile) {
+        this.showStatus("No active account was found.", "error");
+        return;
+      }
+
+      const email = normalizeEmail(this.dom.googleSyncForm.elements.syncEmail.value || "");
+
+      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        this.showStatus("Enter a valid Gmail or Google account email first.", "error");
+        return;
+      }
+
+      profile.google = mergeGoogleProfile(profile.google);
+      profile.google.syncEmail = email;
+      this.persist();
+      this.renderProfiles();
+      this.showStatus(email ? `Saved ${email} for Google Calendar sync.` : "Cleared the saved Gmail for calendar sync.");
+    },
+
+    async handleGoogleCalendarConnect() {
+      if (!getGoogleClientId()) {
+        this.focusGoogleClientIdInput();
+        this.showStatus("Save your Google OAuth client ID first, then connect Google Calendar.", "error");
+        return;
+      }
+
+      try {
+        const { profile, identity } = await this.ensureGoogleCalendarConnection();
+
+        this.persist();
+        this.hydrateForms();
+        this.renderProfiles();
+        this.showStatus(`Google Calendar connected for ${identity.email}. Shifts will sync into ${profile.google.calendarSummary || "your Shiftwise calendar"}.`);
+      } catch (error) {
+        this.showStatus(error.message || "Google Calendar could not be connected.", "error");
+      }
+    },
+
+    async handleGoogleCalendarSync() {
+      if (!getGoogleClientId()) {
+        this.focusGoogleClientIdInput();
+        this.showStatus("Save your Google OAuth client ID first, then sync your shifts to Google Calendar.", "error");
+        return;
+      }
+
+      if (this.state.shifts.length === 0) {
+        this.showStatus("Add at least one shift before syncing to Google Calendar.", "error");
+        return;
+      }
+
+      try {
+        const { profile, tokenResponse } = await this.ensureGoogleCalendarConnection();
+        const calendarId = profile.google.calendarId;
+        const existing = await this.googleApiRequest(`calendars/${encodeURIComponent(calendarId)}/events`, {
+          accessToken: tokenResponse.access_token,
+          query: {
+            privateExtendedProperty: `shiftwiseProfileId=${profile.id}`,
+            maxResults: "2500",
+            singleEvents: "true",
+            showDeleted: "false"
+          }
+        });
+        const existingMap = new Map();
+
+        (existing.items || []).forEach((event) => {
+          const shiftId = event?.extendedProperties?.private?.shiftwiseShiftId;
+
+          if (shiftId) {
+            existingMap.set(shiftId, event);
+          }
+        });
+
+        let createdCount = 0;
+        let updatedCount = 0;
+
+        for (const shift of this.state.shifts) {
+          const eventBody = this.buildGoogleCalendarEvent(shift, profile);
+          const existingEvent = existingMap.get(shift.id);
+
+          if (existingEvent?.id) {
+            await this.googleApiRequest(`calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(existingEvent.id)}`, {
+              method: "PATCH",
+              accessToken: tokenResponse.access_token,
+              body: eventBody
+            });
+            updatedCount += 1;
+          } else {
+            await this.googleApiRequest(`calendars/${encodeURIComponent(calendarId)}/events`, {
+              method: "POST",
+              accessToken: tokenResponse.access_token,
+              body: eventBody
+            });
+            createdCount += 1;
+          }
+        }
+
+        let deletedCount = 0;
+        const activeShiftIds = new Set(this.state.shifts.map((shift) => shift.id));
+
+        for (const [shiftId, event] of existingMap.entries()) {
+          if (!activeShiftIds.has(shiftId) && event?.id) {
+            await this.googleApiRequest(`calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(event.id)}`, {
+              method: "DELETE",
+              accessToken: tokenResponse.access_token
+            });
+            deletedCount += 1;
+          }
+        }
+
+        profile.google.lastSyncedAt = new Date().toISOString();
+        this.persist();
+        this.renderProfiles();
+        this.showStatus(`Google Calendar synced: ${createdCount} created, ${updatedCount} updated, ${deletedCount} removed.`);
+      } catch (error) {
+        this.showStatus(error.message || "Shifts could not be synced to Google Calendar.", "error");
+      }
+    },
+
     getActiveProfile() {
       return getActiveProfileRecord(this.state);
     },
@@ -1749,21 +2397,21 @@
       const credential = String(this.dom.loginForm.elements.credential.value || "").trim();
 
       if (!credential) {
-        this.showStatus("Enter a username or PIN to unlock the app.", "error");
+        this.showStatus("Enter your email, username, or PIN to unlock the app.", "error");
         return;
       }
 
       const { profile, error } = findProfileByCredential(credential, this.state.profiles);
 
       if (!profile) {
-        this.showStatus(error || "No local account matched that username or PIN.", "error");
+        this.showStatus(error || "No allowed account matched that email, username, or PIN.", "error");
         return;
       }
 
       this.switchProfile(profile.id, `Signed in as ${profile.name}.`);
     },
 
-    lockApp(message = "Switched account. Enter a username or PIN to continue.") {
+    lockApp(message = "Switched account. Enter your email, username, or PIN to continue.") {
       const credentialField = this.dom.loginForm?.elements?.credential;
 
       syncActiveProfileFromTopLevel(this.state);
@@ -2326,6 +2974,8 @@
         + this.state.debts.length;
       const recordLabel = totalItems === 1 ? "record" : "records";
       const deviceMode = isStandaloneMode() ? "Installed app" : "Browser mode";
+      const accessLabel = activeProfile?.login?.pin ? "Email, username, or PIN" : "Email or username";
+      const loginEmail = normalizeEmail(activeProfile?.login?.email || "");
 
       document.body.classList.toggle("is-locked", this.isLocked);
       this.dom.loginShell.classList.toggle("hidden", !this.isLocked);
@@ -2343,9 +2993,9 @@
             <article class="login-account-item">
               <div class="login-account-copy">
                 <strong>${profile.name}</strong>
-                <p class="snapshot-meta">@${profile.login.username} | ${profile.login.pin ? "Username or PIN" : "Username only"}</p>
+                <p class="snapshot-meta">${profile.login.email || `@${profile.login.username}`} | ${profile.login.pin ? "Email, username, or PIN" : "Email or username"}</p>
               </div>
-              <button class="button ghost-button" data-action="fill-credential" data-credential="${profile.login.username}" type="button">Use username</button>
+              <button class="button ghost-button" data-action="fill-credential" data-credential="${profile.login.email || profile.login.username}" type="button">Use saved login</button>
             </article>
           `)
           .join("");
@@ -2358,12 +3008,16 @@
               <p class="section-kicker">Current local account</p>
               <h3 class="account-name">${activeProfile.name}</h3>
             </div>
-            <span class="badge">@${activeProfile.login.username}</span>
+            <span class="badge">${loginEmail || `@${activeProfile.login.username}`}</span>
           </div>
           <div class="account-summary-grid">
             <div class="account-detail">
               <span>Access</span>
-              <strong>${activeProfile.login.pin ? "Username or PIN" : "Username only"}</strong>
+              <strong>${accessLabel}</strong>
+            </div>
+            <div class="account-detail">
+              <span>Allowed email</span>
+              <strong>${loginEmail || "Not set in admin panel"}</strong>
             </div>
             <div class="account-detail">
               <span>Saved data</span>
@@ -2375,16 +3029,21 @@
             </div>
           </div>
           <p class="field-help">
-            ${activeProfile.login.pin ? "Quick PIN unlock is enabled." : "This account currently unlocks with a username only."}
-            Install the app for offline use, then move data between phones with backup import and export.
+            ${activeProfile.login.pin ? "Quick PIN unlock is enabled on this device." : "This account currently signs in with email or username only."}
+            Access is managed from the separate admin panel, and this device can keep working offline after the account has been added here.
           </p>
         ` : '<p class="empty-state">No local account is selected.</p>';
       }
 
-      this.dom.lockAppButton.disabled = !activeProfile;
-      this.dom.deleteProfileButton.disabled = this.state.profiles.length <= 1;
-      this.dom.deleteProfileButton.textContent = "Delete current account";
-      this.dom.deleteProfileButton.title = activeProfile ? `Delete ${activeProfile.name}` : "Delete current account";
+      if (this.dom.lockAppButton) {
+        this.dom.lockAppButton.disabled = !activeProfile;
+      }
+
+      if (this.dom.deleteProfileButton) {
+        this.dom.deleteProfileButton.disabled = this.state.profiles.length <= 1;
+        this.dom.deleteProfileButton.textContent = "Delete current account";
+        this.dom.deleteProfileButton.title = activeProfile ? `Delete ${activeProfile.name}` : "Delete current account";
+      }
     },
 
     renderHeroMetrics() {
@@ -3004,12 +3663,17 @@
   };
 
   const exported = {
+    STORAGE_KEY,
     createDefaultState,
     createDefaultSettings,
     createDefaultProfile,
     mergeState,
     serializeState,
     createUniqueProfileName,
+    createUniqueUsername,
+    buildBaseUsername,
+    normalizeEmail,
+    normalizePin,
     calculateShift,
     getPayPeriod,
     buildPayPeriods,
@@ -3032,7 +3696,13 @@
     module.exports = exported;
   }
 
+  global.ShiftwiseAU = exported;
+
   if (typeof document !== "undefined") {
-    document.addEventListener("DOMContentLoaded", () => app.init());
+    document.addEventListener("DOMContentLoaded", () => {
+      if (document.body?.dataset?.shiftwiseApp === "main") {
+        app.init();
+      }
+    });
   }
 })(typeof globalThis !== "undefined" ? globalThis : window);

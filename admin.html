@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Shiftwise AU admin panel for managing which local users can access the app on this device.">
+  <meta name="theme-color" content="#fbfbf7">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Shiftwise Admin">
+  <title>Shiftwise AU Admin</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-shiftwise-app="admin">
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <div class="ambient ambient-three"></div>
+
+  <div class="login-shell" id="adminLockShell">
+    <section class="login-card">
+      <div class="login-copy-pane">
+        <p class="eyebrow">Admin access</p>
+        <h1 class="login-title">Manage who can unlock Shiftwise on this device</h1>
+        <p class="field-help">
+          This separate admin page is local to this browser. Add buyers here with their email and optional
+          PIN, then they can unlock Shiftwise offline on this device with those credentials.
+        </p>
+        <div class="status-banner login-status hidden" id="adminLockStatus"></div>
+
+        <section id="adminUnlockPane">
+          <p class="section-kicker">Unlock panel</p>
+          <form class="login-form" id="adminUnlockForm">
+            <label class="field field-span">
+              <span>Admin passcode</span>
+              <input autocomplete="current-password" name="passcode" placeholder="Enter admin passcode" type="password">
+            </label>
+
+            <div class="compact-form-actions field-span">
+              <button class="button primary-button" type="submit">Unlock admin panel</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="hidden" id="adminSetupPane">
+          <p class="section-kicker">First-time setup</p>
+          <form class="login-form" id="adminSetupForm">
+            <label class="field field-span">
+              <span>Create admin passcode</span>
+              <input autocomplete="new-password" name="passcode" placeholder="At least 6 characters" type="password">
+            </label>
+
+            <label class="field field-span">
+              <span>Confirm admin passcode</span>
+              <input autocomplete="new-password" name="confirmPasscode" placeholder="Re-enter passcode" type="password">
+            </label>
+
+            <div class="compact-form-actions field-span">
+              <button class="button primary-button" type="submit">Save admin passcode</button>
+            </div>
+          </form>
+        </section>
+      </div>
+
+      <div class="login-side">
+        <p class="section-kicker">How it works</p>
+        <h2 class="login-side-title">Separate access control for Shiftwise</h2>
+        <p class="field-help">
+          This panel is not linked from the main Shiftwise screens. It only controls which local users
+          are allowed to sign in on this device, and those approvals stay available offline here.
+        </p>
+        <div class="summary-grid admin-lock-summary" id="adminLockSummary"></div>
+      </div>
+    </section>
+  </div>
+
+  <header class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">Local admin panel</p>
+      <h1>Shiftwise AU Access Control</h1>
+      <p class="hero-text">
+        Keep a separate local list of approved users for this device. Add each buyer's email and
+        optional PIN, then let them unlock the main Shiftwise app with the credentials you issued.
+      </p>
+      <p class="hero-helper">
+        Important: this panel controls access on this device only. Without a backend, changes made here
+        do not sync automatically to other devices.
+      </p>
+    </div>
+
+    <div class="hero-metrics" id="adminHeroMetrics"></div>
+  </header>
+
+  <main class="shell hidden" id="adminPanel">
+    <div class="status-banner hidden" id="adminStatus"></div>
+
+    <div class="panel-grid two-up">
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Allowed users</p>
+            <h2>Who can sign in on this device</h2>
+          </div>
+        </div>
+        <p class="field-help">
+          Editing or deleting a user here changes their access and preserves or removes their saved local
+          Shiftwise data on this device.
+        </p>
+        <div class="entry-list admin-user-list" id="adminUserList"></div>
+      </article>
+
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">User details</p>
+            <h2>Add or update a user</h2>
+          </div>
+        </div>
+        <form class="compact-form" id="adminUserForm">
+          <input name="profileId" type="hidden">
+
+          <label class="field">
+            <span>Display name</span>
+            <input name="displayName" placeholder="Sam Taylor" required type="text">
+          </label>
+
+          <label class="field">
+            <span>Email</span>
+            <input autocapitalize="off" inputmode="email" name="email" placeholder="sam@example.com" required type="email">
+          </label>
+
+          <label class="field">
+            <span>Username</span>
+            <input autocapitalize="off" name="username" placeholder="Optional shortcut login" type="text">
+          </label>
+
+          <label class="field">
+            <span>PIN</span>
+            <input inputmode="numeric" name="pin" placeholder="Optional 4-6 digits" type="password">
+          </label>
+
+          <div class="compact-form-actions field-span admin-form-actions">
+            <button class="button primary-button" id="adminUserSubmitButton" type="submit">Add user</button>
+            <button class="button ghost-button" id="adminUserResetButton" type="button">Clear form</button>
+          </div>
+        </form>
+        <p class="field-help admin-inline-note" id="adminFormNote">
+          Leave username blank to generate one automatically from the email or display name.
+        </p>
+      </article>
+    </div>
+
+    <article class="card">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">Panel controls</p>
+          <h2>Admin tools for this device</h2>
+        </div>
+      </div>
+      <div class="summary-grid" id="adminSummary"></div>
+      <div class="hero-actions admin-toolbar">
+        <button class="button secondary-button" id="adminLockButton" type="button">Lock admin panel</button>
+        <button class="button ghost-button" id="adminChangePasscodeButton" type="button">Change admin passcode</button>
+        <button class="button ghost-button" id="adminOpenAppButton" type="button">Open Shiftwise app</button>
+      </div>
+      <p class="field-help">
+        This admin page stays separate from the main Shiftwise navigation. Use it to issue or revoke local
+        access on this device without exposing the controls inside the user-facing app.
+      </p>
+    </article>
+  </main>
+
+  <script defer src="script.js"></script>
+  <script defer src="admin.js"></script>
+</body>
+</html>

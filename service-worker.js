@@ -1,9 +1,11 @@
-const CACHE_NAME = "shiftwise-au-shell-v1";
+const CACHE_NAME = "shiftwise-au-shell-v4";
 const APP_SHELL = [
   "./",
   "./index.html",
+  "./admin.html",
   "./styles.css",
   "./script.js",
+  "./admin.js",
   "./manifest.webmanifest",
   "./assets/icon-192.png",
   "./assets/icon-512.png"
